@@ -73,10 +73,31 @@ export async function renderRecon(container) {
       await api.del(`/proxy/recon/scans/${btn.dataset.delete}`);
       loadScans();
     }));
-    el.querySelectorAll("[data-download]").forEach((btn) => (btn.onclick = async () => {
-      await api.post(`/proxy/recon/scans/${btn.dataset.download}/download/json`);
-      api.toast("Download richiesto");
-    }));
+    el.querySelectorAll("[data-download]").forEach((btn) => (btn.onclick = () => downloadScan(btn.dataset.download)));
+  }
+
+  async function downloadScan(scanId) {
+    let resp;
+    try {
+      resp = await fetch(`/proxy/recon/scans/${scanId}/download/json`, { method: "POST" });
+    } catch (err) {
+      api.toast(`Errore di rete: ${err.message}`, true);
+      return;
+    }
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => null);
+      api.toast((data && data.detail && data.detail.error) || `HTTP ${resp.status}`, true);
+      return;
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `recon-scan-${scanId}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
   async function showDetail(scanId) {
