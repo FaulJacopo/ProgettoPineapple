@@ -64,7 +64,7 @@ async function renderTime(body) {
     api.toast("Timezone aggiornato");
   };
   body.querySelector("#sync-time").onclick = async () => {
-    await api.put("/proxy/settings/synctime", { timestamp: String(Math.floor(Date.now() / 1000)) });
+    await api.put("/proxy/settings/synctime", { timestamp: `@${Math.floor(Date.now() / 1000)}` });
     api.toast("Ora sincronizzata");
   };
 }
@@ -91,11 +91,25 @@ async function renderDevice(body) {
   <div class="card">
     <h2 style="margin-top:0">Dispositivi USB</h2>
     <div class="pre">${escapeHtml(usbData?.devices ?? "-")}</div>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">Alimentazione</h2>
+    <p class="muted">Riavvia il dispositivo fisico. Utile se Recon o altre funzioni radio smettono di rispondere correttamente.</p>
+    <button class="danger" id="device-reboot">Riavvia dispositivo</button>
   </div>`;
 
   body.querySelector("#button-save").onclick = async () => {
     await api.put("/proxy/settings/button", { button_script: val(body, "button-script") });
     api.toast("Script salvato");
+  };
+  body.querySelector("#device-reboot").onclick = async () => {
+    if (!confirm("Riavviare il WiFi Pineapple? Il dispositivo sarà irraggiungibile per circa un minuto e tutte le scansioni/AP attivi verranno interrotti.")) return;
+    try {
+      await api.post("/proxy/reboot");
+      api.toast("Riavvio in corso...");
+    } catch (err) {
+      api.toast(`Riavvio non riuscito: ${err.message}`, true);
+    }
   };
 }
 
@@ -178,8 +192,8 @@ async function renderNetworking(body) {
       <div class="field"><label>Password</label><input type="password" id="mgmt-password" /></div>
       <div class="field"><label>Conferma password</label><input type="password" id="mgmt-confirm" /></div>
     </div>
-    <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="mgmt-hidden" style="width:auto" ${m.hidden ? "checked" : ""}/> Nascosta</label>
-    <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="mgmt-disabled" style="width:auto" ${m.disabled ? "checked" : ""}/> Disabilitata</label>
+    <label class="checkbox-row"><input type="checkbox" id="mgmt-hidden" ${m.hidden ? "checked" : ""}/> Nascosta</label>
+    <label class="checkbox-row"><input type="checkbox" id="mgmt-enabled" ${m.enabled ? "checked" : ""}/> Abilitata</label>
     <button class="primary" id="mgmt-save">Salva AP gestione</button>
   </div>
 
@@ -187,10 +201,12 @@ async function renderNetworking(body) {
     <h2 style="margin-top:0">AP Open</h2>
     <div class="row">
       <div class="field"><label>SSID</label><input id="open-ssid" value="${escapeAttr(o.ssid)}" /></div>
+      <div class="field"><label>BSSID</label><input id="open-bssid" value="${escapeAttr(o.bssid)}" placeholder="AA:BB:CC:DD:EE:FF" /></div>
       <div class="field"><label>Country</label><input id="open-country" value="${escapeAttr(o.country)}" /></div>
       <div class="field"><label>Canale</label><input id="open-channel" type="number" value="${o.channel ?? ""}" /></div>
     </div>
-    <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="open-hidden" style="width:auto" ${o.hidden ? "checked" : ""}/> Nascosta</label>
+    <label class="checkbox-row"><input type="checkbox" id="open-hidden" ${o.hidden ? "checked" : ""}/> Nascosta</label>
+    <label class="checkbox-row"><input type="checkbox" id="open-enabled" ${o.enabled ? "checked" : ""}/> Abilitata</label>
     <button class="primary" id="open-save">Salva AP Open</button>
   </div>
 
@@ -205,9 +221,9 @@ async function renderNetworking(body) {
       <div class="field"><label>Password</label><input type="password" id="wpa-password" /></div>
       <div class="field"><label>Conferma password</label><input type="password" id="wpa-confirm" /></div>
     </div>
-    <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="wpa-hidden" style="width:auto" ${w.hidden ? "checked" : ""}/> Nascosta</label>
-    <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="wpa-disabled" style="width:auto" ${w.disabled ? "checked" : ""}/> Disabilitata</label>
-    <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="wpa-capture" style="width:auto" ${w.capture_handshakes ? "checked" : ""}/> Cattura handshake</label>
+    <label class="checkbox-row"><input type="checkbox" id="wpa-hidden" ${w.hidden ? "checked" : ""}/> Nascosta</label>
+    <label class="checkbox-row"><input type="checkbox" id="wpa-enabled" ${w.enabled ? "checked" : ""}/> Abilitata</label>
+    <label class="checkbox-row"><input type="checkbox" id="wpa-capture" ${w.capture_handshakes ? "checked" : ""}/> Cattura handshake</label>
     <button class="primary" id="wpa-save">Salva Evil Twin AP</button>
   </div>
 
@@ -243,16 +259,18 @@ async function renderNetworking(body) {
       password: val(body, "mgmt-password"),
       confirm_password: val(body, "mgmt-confirm"),
       hidden: chk(body, "mgmt-hidden"),
-      disabled: chk(body, "mgmt-disabled"),
+      enabled: chk(body, "mgmt-enabled"),
     });
     api.toast("AP di gestione salvato");
   };
   body.querySelector("#open-save").onclick = async () => {
     await api.put("/proxy/settings/networking/ap/open", {
       ssid: val(body, "open-ssid"),
+      bssid: val(body, "open-bssid"),
       country: val(body, "open-country"),
       channel: Number(val(body, "open-channel") || 0),
       hidden: chk(body, "open-hidden"),
+      enabled: chk(body, "open-enabled"),
     });
     api.toast("AP Open salvato");
   };
@@ -264,7 +282,7 @@ async function renderNetworking(body) {
       password: val(body, "wpa-password"),
       confirm_password: val(body, "wpa-confirm"),
       hidden: chk(body, "wpa-hidden"),
-      disabled: chk(body, "wpa-disabled"),
+      enabled: chk(body, "wpa-enabled"),
       capture_handshakes: chk(body, "wpa-capture"),
     });
     api.toast("Evil Twin AP salvato");

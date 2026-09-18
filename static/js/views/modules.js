@@ -46,7 +46,13 @@ export async function renderModules(container) {
 
   async function loadInstalled() {
     const el = container.querySelector("#m-installed");
-    const data = await api.get("/proxy/modules");
+    let data;
+    try {
+      data = await api.get("/proxy/modules");
+    } catch (err) {
+      el.innerHTML = `<p class="empty">Moduli installati non disponibili: ${escapeHtml(err.message)}</p>`;
+      return;
+    }
     const items = Array.isArray(data) ? data : data?.modules || [];
     if (!items.length) {
       el.innerHTML = `<p class="empty">Nessun modulo installato.</p>`;
@@ -75,7 +81,13 @@ export async function renderModules(container) {
 
   async function loadAvailable() {
     const el = container.querySelector("#m-available");
-    const data = await api.get("/proxy/modules/available");
+    let data;
+    try {
+      data = await api.get("/proxy/modules/available", { silent: true });
+    } catch (err) {
+      el.innerHTML = `<p class="empty">Moduli disponibili non recuperabili (probabilmente il device non ha accesso a Internet): ${escapeHtml(err.message)}</p>`;
+      return;
+    }
     const items = Array.isArray(data) ? data : data?.modules || [];
     if (!items.length) {
       el.innerHTML = `<p class="empty">Nessun modulo disponibile.</p>`;
@@ -91,5 +103,5 @@ export async function renderModules(container) {
     return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
-  await Promise.all([loadInstalled(), loadAvailable()]);
+  await Promise.allSettled([loadInstalled(), loadAvailable()]);
 }

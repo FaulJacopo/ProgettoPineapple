@@ -13,3 +13,4 @@ async def cards():
 @router.get("/news")
 async def news():
     return await client.request_json("GET", "/api/dashboard/news")
+

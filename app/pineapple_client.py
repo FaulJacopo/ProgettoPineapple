@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 from fastapi import HTTPException
 from fastapi.responses import Response
@@ -58,9 +60,13 @@ class PineappleClient:
         try:
             resp = await self._client.request(method, path, headers=headers, **kwargs)
         except httpx.RequestError as exc:
+            if retry:
+                await asyncio.sleep(0.5)
+                return await self.request(method, path, retry=False, headers=headers, **kwargs)
+            reason = str(exc) or type(exc).__name__
             raise HTTPException(
                 status_code=502,
-                detail={"error": f"Impossibile contattare il WiFi Pineapple ({exc})"},
+                detail={"error": f"Impossibile contattare il WiFi Pineapple ({reason})"},
             ) from exc
 
         if resp.status_code == 401 and retry:

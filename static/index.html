@@ -4,20 +4,31 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>WiFi Pineapple Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" />
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
 <div class="app">
   <aside class="sidebar">
-    <div class="brand">🍍 Pineapple</div>
+    <div class="brand">
+      <span class="logo">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="white" stroke-width="1.6" stroke-linejoin="round"/>
+          <path d="M2 7L12 12L22 7" stroke="white" stroke-width="1.6" stroke-linejoin="round"/>
+          <path d="M12 12V22" stroke="white" stroke-width="1.6"/>
+        </svg>
+      </span>
+      <span class="label">Pineapple</span>
+    </div>
     <nav id="nav">
-      <a href="#/dashboard" data-route="dashboard">Dashboard</a>
-      <a href="#/notifications" data-route="notifications">Notifications</a>
-      <a href="#/campaigns" data-route="campaigns">Campaigns</a>
-      <a href="#/pineap" data-route="pineap">PineAP</a>
-      <a href="#/recon" data-route="recon">Recon</a>
-      <a href="#/settings" data-route="settings">Settings</a>
-      <a href="#/modules" data-route="modules">Modules</a>
+      <a href="#/dashboard" data-route="dashboard"><span class="icon">⌂</span><span class="label">Dashboard</span></a>
+      <a href="#/notifications" data-route="notifications"><span class="icon">◔</span><span class="label">Notifications</span></a>
+      <a href="#/campaigns" data-route="campaigns"><span class="icon">◎</span><span class="label">Campaigns</span></a>
+      <a href="#/pineap" data-route="pineap"><span class="icon">▲</span><span class="label">PineAP</span></a>
+      <a href="#/recon" data-route="recon"><span class="icon">◈</span><span class="label">Recon</span></a>
+      <a href="#/settings" data-route="settings"><span class="icon">⚙</span><span class="label">Settings</span></a>
+      <a href="#/modules" data-route="modules"><span class="icon">▦</span><span class="label">Modules</span></a>
     </nav>
     <div class="status" id="connection-status">checking...</div>
   </aside>

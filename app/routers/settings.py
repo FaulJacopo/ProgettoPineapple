@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Body
-
 from ..pineapple_client import client
 
 router = APIRouter(prefix="/proxy/settings", tags=["settings"])

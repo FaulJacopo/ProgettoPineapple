@@ -7,7 +7,7 @@ function toast(message, isError = false) {
   setTimeout(() => el.remove(), 4000);
 }
 
-async function request(method, path, body) {
+async function request(method, path, body, { silent = false } = {}) {
   const opts = { method, headers: {} };
   if (body !== undefined) {
     opts.headers["Content-Type"] = "application/json";
@@ -17,7 +17,7 @@ async function request(method, path, body) {
   try {
     resp = await fetch(path, opts);
   } catch (err) {
-    toast(`Errore di rete: ${err.message}`, true);
+    if (!silent) toast(`Errore di rete: ${err.message}`, true);
     throw err;
   }
   let data = null;
@@ -29,16 +29,16 @@ async function request(method, path, body) {
   }
   if (!resp.ok) {
     const message = (data && data.error) || (data && data.detail && data.detail.error) || `HTTP ${resp.status}`;
-    toast(message, true);
+    if (!silent) toast(message, true);
     throw new Error(message);
   }
   return data;
 }
 
 export const api = {
-  get: (path) => request("GET", path),
-  post: (path, body) => request("POST", path, body ?? {}),
-  put: (path, body) => request("PUT", path, body ?? {}),
-  del: (path, body) => request("DELETE", path, body),
+  get: (path, opts) => request("GET", path, undefined, opts),
+  post: (path, body, opts) => request("POST", path, body ?? {}, opts),
+  put: (path, body, opts) => request("PUT", path, body ?? {}, opts),
+  del: (path, body, opts) => request("DELETE", path, body, opts),
   toast,
 };

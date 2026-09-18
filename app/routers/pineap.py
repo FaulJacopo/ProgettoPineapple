@@ -64,6 +64,9 @@ async def check_handshake_capture():
 async def delete_handshake(payload: dict = Body(...)):
     return await client.request_json("DELETE", "/api/pineap/handshakes/delete", json=payload)
 
+@router.post("/handshakes/download")
+async def download_handshake(payload: dict = Body(...)):
+    return await client.request_stream("POST", "/api/download", json={"filename": payload.get("filename", "")})
 
 @router.get("/enterprise/settings")
 async def get_enterprise_settings():

@@ -50,14 +50,14 @@ async function pollConnection() {
   try {
     const data = await api.get("/proxy/helpers/checkonline");
     if (data && data.online) {
-      el.textContent = "● device online";
+      el.textContent = "Internet: disponibile sul device";
       el.className = "status online";
     } else {
-      el.textContent = "● device offline";
+      el.textContent = "Internet: non disponibile sul device";
       el.className = "status offline";
     }
   } catch {
-    el.textContent = "● non raggiungibile";
+    el.textContent = "Device non raggiungibile";
     el.className = "status offline";
   }
 }

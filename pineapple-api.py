@@ -39,6 +39,14 @@ app.include_router(recon.router)
 app.include_router(settings.router)
 app.include_router(modules.router)
 
+@app.middleware("http")
+async def no_cache_static(request, call_next):
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith(("/js/", "/css/")):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
 
 
