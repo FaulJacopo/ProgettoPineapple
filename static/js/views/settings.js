@@ -264,15 +264,21 @@ async function renderNetworking(body) {
     api.toast("AP di gestione salvato");
   };
   body.querySelector("#open-save").onclick = async () => {
+    const wantEnabled = chk(body, "open-enabled");
     await api.put("/proxy/settings/networking/ap/open", {
       ssid: val(body, "open-ssid"),
       bssid: val(body, "open-bssid"),
       country: val(body, "open-country"),
       channel: Number(val(body, "open-channel") || 0),
       hidden: chk(body, "open-hidden"),
-      enabled: chk(body, "open-enabled"),
+      enabled: wantEnabled,
     });
-    api.toast("AP Open salvato");
+    const fresh = await api.get("/proxy/settings/networking/ap/open", { silent: true }).catch(() => null);
+    if (fresh && fresh.enabled !== wantEnabled) {
+      api.toast("Il device ha accettato la richiesta ma non ha cambiato lo stato enabled (bug noto del firmware Pineapple)", true);
+    } else {
+      api.toast("AP Open salvato");
+    }
   };
   body.querySelector("#wpa-save").onclick = async () => {
     await api.put("/proxy/settings/networking/ap/wpa", {
