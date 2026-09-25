@@ -2,6 +2,8 @@ import { api } from "../api.js";
 import { openModal, modalBody } from "../modal.js";
 
 export async function renderRecon(container) {
+  const selectedScanIds = new Set();
+
   container.innerHTML = `
     <h1>Recon</h1>
     <div class="card">
@@ -114,13 +116,31 @@ export async function renderRecon(container) {
     const el = container.querySelector("#r-scans");
     const scans = (await api.get("/proxy/recon/scans")) || [];
     if (!scans.length) {
+      selectedScanIds.clear();
       el.innerHTML = `<p class="empty">Nessuna scansione salvata.</p>`;
       return;
     }
-    el.innerHTML = `<table>
-      <thead><tr><th>ID</th><th>Data</th><th>Azioni</th></tr></thead>
+
+    const availableScanIds = new Set(scans.map((scan) => String(scan.scan_id)));
+    for (const scanId of selectedScanIds) {
+      if (!availableScanIds.has(scanId)) selectedScanIds.delete(scanId);
+    }
+
+    el.innerHTML = `<div class="row" style="align-items:center;gap:12px;margin-bottom:12px">
+      <label class="checkbox-row" style="margin:0">
+        <input id="r-select-all-scans" type="checkbox" />
+        Seleziona tutte
+      </label>
+      <button class="primary" id="r-download-merged" disabled>Download CSV unificato</button>
+      <span class="muted" id="r-selected-count">Seleziona almeno 2 scansioni</span>
+    </div>
+    <table>
+      <thead><tr><th>Seleziona</th><th>ID</th><th>Data</th><th>Azioni</th></tr></thead>
       <tbody>${scans.map((s) => `<tr>
-        <td>${s.scan_id}</td><td>${escapeHtml(s.date ?? "-")}</td>
+        <td><label class="checkbox-row" style="display:inline-flex;margin:0">
+          <input type="checkbox" data-select-scan="${escapeHtml(s.scan_id)}" ${selectedScanIds.has(String(s.scan_id)) ? "checked" : ""} aria-label="Seleziona scansione ${escapeHtml(s.scan_id)}" />
+        </label></td>
+        <td>${escapeHtml(s.scan_id)}</td><td>${escapeHtml(s.date ?? "-")}</td>
         <td>
           <button data-view="${s.scan_id}">Vedi</button>
           <button data-download="${s.scan_id}">Download JSON</button>
@@ -129,12 +149,56 @@ export async function renderRecon(container) {
       </tr>`).join("")}</tbody>
     </table>`;
 
+    const selectAll = el.querySelector("#r-select-all-scans");
+    const downloadMerged = el.querySelector("#r-download-merged");
+    const selectedCount = el.querySelector("#r-selected-count");
+    const selectionInputs = [...el.querySelectorAll("[data-select-scan]")];
+
+    function updateSelectionControls() {
+      const selectedCountValue = selectionInputs.filter((input) => input.checked).length;
+      selectAll.checked = selectedCountValue === selectionInputs.length;
+      selectAll.indeterminate = selectedCountValue > 0 && selectedCountValue < selectionInputs.length;
+      downloadMerged.disabled = selectedCountValue < 2;
+      selectedCount.textContent = selectedCountValue === 0
+        ? "Seleziona almeno 2 scansioni"
+        : `${selectedCountValue} ${selectedCountValue === 1 ? "scansione selezionata" : "scansioni selezionate"}`;
+    }
+
+    selectAll.onchange = () => {
+      selectionInputs.forEach((input) => {
+        input.checked = selectAll.checked;
+        if (input.checked) selectedScanIds.add(input.dataset.selectScan);
+        else selectedScanIds.delete(input.dataset.selectScan);
+      });
+      updateSelectionControls();
+    };
+
+    selectionInputs.forEach((input) => (input.onchange = () => {
+      if (input.checked) selectedScanIds.add(input.dataset.selectScan);
+      else selectedScanIds.delete(input.dataset.selectScan);
+      updateSelectionControls();
+    }));
+
+    downloadMerged.onclick = async () => {
+      const scanIds = selectionInputs.filter((input) => input.checked).map((input) => input.dataset.selectScan);
+      if (scanIds.length < 2) return;
+      downloadMerged.disabled = true;
+      downloadMerged.textContent = "Preparazione...";
+      const downloaded = await downloadMergedScans(scanIds);
+      downloadMerged.textContent = "Download CSV unificato";
+      updateSelectionControls();
+      if (downloaded) api.toast("File unificato scaricato");
+    };
+
     el.querySelectorAll("[data-view]").forEach((btn) => (btn.onclick = () => showDetail(btn.dataset.view)));
     el.querySelectorAll("[data-delete]").forEach((btn) => (btn.onclick = async () => {
       await api.del(`/proxy/recon/scans/${btn.dataset.delete}`);
+      selectedScanIds.delete(btn.dataset.delete);
       loadScans();
     }));
     el.querySelectorAll("[data-download]").forEach((btn) => (btn.onclick = () => downloadScan(btn.dataset.download)));
+
+    updateSelectionControls();
   }
 
   async function searchSsidHistory(container, query) {
@@ -206,6 +270,35 @@ export async function renderRecon(container) {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+  }
+
+  async function downloadMergedScans(scanIds) {
+    let resp;
+    try {
+      resp = await fetch(`/proxy/recon/scans/download/merged/csv`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scan_ids: scanIds }),
+      });
+    } catch (err) {
+      api.toast(`Errore di rete: ${err.message}`, true);
+      return false;
+    }
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => null);
+      api.toast((data && data.detail && data.detail.error) || `HTTP ${resp.status}`, true);
+      return false;
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `recon-scans-merged-${scanIds.join("-")}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    return true;
   }
 
   async function showDetail(scanId) {
