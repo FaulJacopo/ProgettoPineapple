@@ -69,8 +69,11 @@ export async function renderRecon(container) {
   };
 
   let wasRunning = false;
+  let statusInFlight = false;
 
   async function refreshStatus() {
+    if (statusInFlight) return;
+    statusInFlight = true;
     const el = container.querySelector("#r-status");
     try {
       const s = await api.get("/proxy/recon/status");
@@ -83,9 +86,11 @@ export async function renderRecon(container) {
         loadLiveAps(null);
       }
       wasRunning = !!s.scanRunning;
-    } catch {
-      el.textContent = "";
+    } catch (err) {
+      el.textContent = `Dispositivo non raggiungibile (${err.message})`;
       wasRunning = false;
+    } finally {
+      statusInFlight = false;
     }
   }
 

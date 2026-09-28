@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -20,9 +21,23 @@ from app.routers import (
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
+logger = logging.getLogger(__name__)
+
+
+async def _disable_ap_open_on_startup() -> None:
+    try:
+        config = await client.request_json("GET", "/api/settings/networking/ap/open")
+        if config.get("enabled"):
+            config["enabled"] = False
+            await client.request_json("PUT", "/api/settings/networking/ap/open", json=config)
+            logger.info("AP Open disattivato all'avvio")
+    except Exception:
+        logger.warning("Impossibile disattivare l'AP Open all'avvio", exc_info=True)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await _disable_ap_open_on_startup()
     yield
     await client.aclose()
 
