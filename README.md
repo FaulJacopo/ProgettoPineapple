@@ -14,17 +14,19 @@ git clone https://github.com/FaulJacopo/ProgettoPineapple
 cd ProgettoPineapple
 ```
 
-Succesivamente dovremo creare il nostro virtual environment.
+# Avvio quando Progetto già installato
+
+Per avviare il progetto una volta che è già stato scaricato basterà accedere alla cartella.
+Doppio click infine sul file chiamato "avvio_applicativo.bat".
+
+Lo script crea automaticamente il virtual environment `.venv` (se non esiste già), installa/aggiorna le dipendenze da `requirements.txt` e avvia l'applicativo. Essendo un file `.bat` e non uno script PowerShell, funziona anche su PC dove l'esecuzione di script PowerShell è bloccata dalle policy di sistema.
+
+In alternativa, per avviare manualmente i comandi da terminale:
 
 ```bash
 python -m venv .venv
 .\.venv\Scripts\activate.bat
 pip install -r requirements.txt
-```
-
-Avvio dell'interfaccia:
-
-```bash
 python pineapple-api.py
 ```
 
