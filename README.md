@@ -14,7 +14,7 @@ git clone https://github.com/FaulJacopo/ProgettoPineapple
 cd ProgettoPineapple
 ```
 
-# Avvio quando Progetto già installato
+## Avvio quando Progetto già installato
 
 Per avviare il progetto una volta che è già stato scaricato basterà accedere alla cartella.
 Doppio click infine sul file chiamato "avvio_applicativo.bat".
@@ -29,6 +29,9 @@ python -m venv .venv
 pip install -r requirements.txt
 python pineapple-api.py
 ```
+
+## Accesso all'interfaccia Web
+Una volta avviato l'applicativo sarà disponibile al seguente URL: `http://localhost:8000`.
 
 ## Sniffing della Password
 
