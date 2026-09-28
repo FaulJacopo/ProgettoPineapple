@@ -70,4 +70,4 @@ if __name__ == "__main__":
 
     # Il nome del file contiene un trattino, non importabile come modulo:
     # passiamo l'app direttamente (niente --reload in questo modo).
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)
