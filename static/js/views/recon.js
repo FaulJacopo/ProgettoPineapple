@@ -124,7 +124,7 @@ export async function renderRecon(container) {
       return;
     }
     renderApTable(el, data?.APResults || [], { showEmpty: true });
-    renderUnassociatedClients(unassocEl, data);
+    await renderUnassociatedClients(unassocEl, data, scanId);
   }
 
   async function loadScans() {
@@ -321,10 +321,10 @@ export async function renderRecon(container) {
     const unassocEl = container.querySelector("#r-detail-unassoc");
     const data = await api.get(`/proxy/recon/scans/${scanId}`);
     renderApTable(el, data?.APResults || [], { showEmpty: true, emptyText: "Nessun access point rilevato in questa scansione." });
-    renderUnassociatedClients(unassocEl, data);
+    renderUnassociatedClients(unassocEl, data, scanId);
   }
 
-  function renderUnassociatedClients(el, data) {
+  async function renderUnassociatedClients(el, data, scanId = null) {
     const outOfRange = (data?.OutOfRangeClientResults || []).map((c) => ({ ...c, kind: "Fuori range" }));
     const unassociated = (data?.UnassociatedClientResults || []).map((c) => ({ ...c, kind: "Probe non associato" }));
     const rows = [...outOfRange, ...unassociated];
@@ -335,15 +335,57 @@ export async function renderRecon(container) {
     }
 
     el.innerHTML = `<table>
-      <thead><tr><th>Tipo</th><th>MAC Client</th><th>AP associato (se noto)</th><th>Canale</th><th>Ultima rilevazione</th></tr></thead>
-      <tbody>${rows.map((c) => `<tr>
+      <thead><tr><th>Tipo</th><th>MAC Client</th><th>AP associato (se noto)</th><th>Canale</th><th>Ultima rilevazione</th><th>Storico correlazioni</th></tr></thead>
+      <tbody>${rows.map((c, i) => `<tr>
         <td>${escapeHtml(c.kind)}</td>
         <td>${escapeHtml(c.client_mac || "-")}</td>
         <td>${escapeHtml(c.ap_mac || "-")}</td>
         <td>${c.ap_channel ?? "-"}</td>
         <td>${fmtEpoch(c.last_seen)}</td>
+        <td data-history-cell="${i}"><span class="muted">Ricerca...</span></td>
       </tr>`).join("")}</tbody>
-    </table>`;
+    </table>
+    <p class="muted" style="margin-top:8px">Lo storico mostra, per ciascun MAC, l'ultima volta in cui è stato visto come client associato con dati (categoria più affidabile) a un access point nelle scansioni salvate. Non è una prova di connessione nello scan corrente: usalo come indizio, da confermare con osservazioni ripetute o altre verifiche.</p>`;
+
+    const macs = rows.map((c) => c.client_mac).filter(Boolean);
+    const history = await lookupClientHistory(macs, scanId);
+    rows.forEach((c, i) => {
+      const cell = el.querySelector(`[data-history-cell="${i}"]`);
+      if (!cell) return;
+      const h = c.client_mac ? history.get(c.client_mac.toLowerCase()) : null;
+      cell.innerHTML = h
+        ? `Visto associato a <strong>${escapeHtml(h.bssid)}</strong>${h.ssid ? ` (${escapeHtml(h.ssid)})` : ""}<br><span class="muted">scan #${escapeHtml(h.scanId)} · ${fmtEpoch(h.lastSeen)}</span>`
+        : `<span class="muted">Nessuna correlazione trovata nello storico</span>`;
+    });
+  }
+
+  async function lookupClientHistory(macs, excludeScanId) {
+    const result = new Map();
+    if (!macs.length) return result;
+    const wanted = new Set(macs.map((m) => m.toLowerCase()));
+
+    const scans = (await api.get("/proxy/recon/scans", { silent: true })) || [];
+    for (const s of scans) {
+      if (String(s.scan_id) === String(excludeScanId)) continue;
+      let data;
+      try {
+        data = await api.get(`/proxy/recon/scans/${s.scan_id}`, { silent: true });
+      } catch {
+        continue;
+      }
+      for (const ap of data?.APResults || []) {
+        for (const mac of clientMacs(ap.clients)) {
+          const key = mac.toLowerCase();
+          if (!wanted.has(key)) continue;
+          const prev = result.get(key);
+          const lastSeen = ap.last_seen ?? 0;
+          if (!prev || lastSeen > prev.lastSeen) {
+            result.set(key, { bssid: ap.bssid, ssid: ap.ssid, scanId: s.scan_id, lastSeen });
+          }
+        }
+      }
+    }
+    return result;
   }
 
   function renderApTable(el, aps, { emptyText = "Nessun access point rilevato." } = {}) {
