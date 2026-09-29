@@ -24,6 +24,10 @@ export async function renderRecon(container) {
     <h2>Access point rilevati (scan in corso)</h2>
     <div id="r-live-aps" class="card"><p class="empty">Nessuno scan in corso. Avvia uno scan per vedere gli AP in tempo reale.</p></div>
 
+    <h2>Client rilevati ma non associati a un AP (scan in corso)</h2>
+    <p class="muted">MAC di dispositivi rilevati dal Pineapple che non sono stati collegati a nessun access point della tabella sopra (fuori range o probe broadcast).</p>
+    <div id="r-live-unassoc" class="card"><p class="empty">Nessuno scan in corso.</p></div>
+
     <h2>Cerca SSID nella cronologia</h2>
     <div class="card">
       <p class="muted" style="margin-top:0">Trova tutti i BSSID mai visti associati a un nome rete, utile se la rete diventa nascosta in seguito.</p>
@@ -39,6 +43,9 @@ export async function renderRecon(container) {
 
     <h2>Dettaglio scan</h2>
     <div id="r-detail" class="card"><p class="empty">Seleziona una scansione.</p></div>
+
+    <h2>Client non associati (dettaglio scan)</h2>
+    <div id="r-detail-unassoc" class="card"><p class="empty">Seleziona una scansione.</p></div>
   `;
 
   checkRadioContention(container);
@@ -104,8 +111,10 @@ export async function renderRecon(container) {
 
   async function loadLiveAps(scanId) {
     const el = container.querySelector("#r-live-aps");
+    const unassocEl = container.querySelector("#r-live-unassoc");
     if (scanId === null || scanId === undefined) {
       el.innerHTML = `<p class="empty">Nessuno scan in corso. Avvia uno scan per vedere gli AP in tempo reale.</p>`;
+      unassocEl.innerHTML = `<p class="empty">Nessuno scan in corso.</p>`;
       return;
     }
     let data;
@@ -115,6 +124,7 @@ export async function renderRecon(container) {
       return;
     }
     renderApTable(el, data?.APResults || [], { showEmpty: true });
+    renderUnassociatedClients(unassocEl, data);
   }
 
   async function loadScans() {
@@ -308,8 +318,32 @@ export async function renderRecon(container) {
 
   async function showDetail(scanId) {
     const el = container.querySelector("#r-detail");
+    const unassocEl = container.querySelector("#r-detail-unassoc");
     const data = await api.get(`/proxy/recon/scans/${scanId}`);
     renderApTable(el, data?.APResults || [], { showEmpty: true, emptyText: "Nessun access point rilevato in questa scansione." });
+    renderUnassociatedClients(unassocEl, data);
+  }
+
+  function renderUnassociatedClients(el, data) {
+    const outOfRange = (data?.OutOfRangeClientResults || []).map((c) => ({ ...c, kind: "Fuori range" }));
+    const unassociated = (data?.UnassociatedClientResults || []).map((c) => ({ ...c, kind: "Probe non associato" }));
+    const rows = [...outOfRange, ...unassociated];
+
+    if (!rows.length) {
+      el.innerHTML = `<p class="empty">Nessun client fuori range o non associato in questa scansione.</p>`;
+      return;
+    }
+
+    el.innerHTML = `<table>
+      <thead><tr><th>Tipo</th><th>MAC Client</th><th>AP associato (se noto)</th><th>Canale</th><th>Ultima rilevazione</th></tr></thead>
+      <tbody>${rows.map((c) => `<tr>
+        <td>${escapeHtml(c.kind)}</td>
+        <td>${escapeHtml(c.client_mac || "-")}</td>
+        <td>${escapeHtml(c.ap_mac || "-")}</td>
+        <td>${c.ap_channel ?? "-"}</td>
+        <td>${fmtEpoch(c.last_seen)}</td>
+      </tr>`).join("")}</tbody>
+    </table>`;
   }
 
   function renderApTable(el, aps, { emptyText = "Nessun access point rilevato." } = {}) {
