@@ -353,8 +353,9 @@ export async function renderRecon(container) {
       const cell = el.querySelector(`[data-history-cell="${i}"]`);
       if (!cell) return;
       const h = c.client_mac ? history.get(c.client_mac.toLowerCase()) : null;
+      const basis = h ? correlationBasis(h) : null;
       cell.innerHTML = h
-        ? `Visto associato a <strong>${escapeHtml(h.bssid)}</strong>${h.ssid ? ` (${escapeHtml(h.ssid)})` : ""}<br><span class="muted">scan #${escapeHtml(h.scanId)} · ${fmtEpoch(h.lastSeen)}</span>`
+        ? `Visto associato a <strong>${escapeHtml(h.bssid)}</strong>${h.ssid ? ` (${escapeHtml(h.ssid)})` : ""}<br><span class="muted">${escapeHtml(basis.label)}${basis.detail ? ` · ${escapeHtml(basis.detail)}` : ""} · scan #${escapeHtml(h.scanId)} · ${fmtEpoch(h.lastSeen)}</span>`
         : `<span class="muted">Nessuna correlazione trovata nello storico</span>`;
     });
   }
@@ -374,18 +375,55 @@ export async function renderRecon(container) {
         continue;
       }
       for (const ap of data?.APResults || []) {
-        for (const mac of clientMacs(ap.clients)) {
-          const key = mac.toLowerCase();
+        for (const entry of clientEntries(ap.clients)) {
+          const key = entry.mac.toLowerCase();
           if (!wanted.has(key)) continue;
           const prev = result.get(key);
-          const lastSeen = ap.last_seen ?? 0;
+          const lastSeen = entry.last_seen || ap.last_seen || 0;
           if (!prev || lastSeen > prev.lastSeen) {
-            result.set(key, { bssid: ap.bssid, ssid: ap.ssid, scanId: s.scan_id, lastSeen });
+            result.set(key, {
+              bssid: ap.bssid,
+              ssid: ap.ssid,
+              scanId: s.scan_id,
+              lastSeen,
+              data: entry.data,
+              direct_probes: entry.direct_probes,
+              broadcast_probes: entry.broadcast_probes,
+            });
           }
         }
       }
     }
     return result;
+  }
+
+  async function lookupApHistory(bssid, excludeScanId) {
+    const best = new Map();
+    if (!bssid) return [];
+    const wanted = String(bssid).toLowerCase();
+
+    const scans = (await api.get("/proxy/recon/scans", { silent: true })) || [];
+    for (const s of scans) {
+      if (excludeScanId != null && String(s.scan_id) === String(excludeScanId)) continue;
+      let data;
+      try {
+        data = await api.get(`/proxy/recon/scans/${s.scan_id}`, { silent: true });
+      } catch {
+        continue;
+      }
+      for (const ap of data?.APResults || []) {
+        if (String(ap.bssid || "").toLowerCase() !== wanted) continue;
+        for (const entry of clientEntries(ap.clients)) {
+          const key = entry.mac.toLowerCase();
+          const prev = best.get(key);
+          const lastSeen = entry.last_seen || ap.last_seen || 0;
+          if (!prev || lastSeen > prev.lastSeen || (lastSeen === prev.lastSeen && entry.data > prev.data)) {
+            best.set(key, { ...entry, lastSeen, scanId: s.scan_id });
+          }
+        }
+      }
+    }
+    return Array.from(best.values()).sort((a, b) => b.lastSeen - a.lastSeen);
   }
 
   function renderApTable(el, aps, { emptyText = "Nessun access point rilevato." } = {}) {
@@ -446,11 +484,13 @@ export async function renderRecon(container) {
   }
 
   async function openApDetail(ap, onDeauth) {
-    const clients = clientMacs(ap.clients);
+    const entries = clientEntries(ap.clients);
+    const clients = entries.map((c) => c.mac);
     const vendor = await lookupVendor(ap.bssid);
-    const clientRows = await Promise.all(clients.map(async (mac) => {
-      const v = await lookupVendor(mac);
-      return `<tr><td>${escapeHtml(mac)}</td><td>${escapeHtml(v)}</td></tr>`;
+    const clientRows = await Promise.all(entries.map(async (c) => {
+      const v = await lookupVendor(c.mac);
+      const basis = correlationBasis(c);
+      return `<tr><td>${escapeHtml(c.mac)}</td><td>${escapeHtml(v)}</td><td>${escapeHtml(basis.label)}${basis.detail ? ` <span class="muted">(${escapeHtml(basis.detail)})</span>` : ""}</td></tr>`;
     }));
 
     openModal(`
@@ -466,14 +506,31 @@ export async function renderRecon(container) {
       </div>
       <h2 style="margin-top:20px">Client connessi</h2>
       ${clients.length
-        ? `<table><thead><tr><th>MAC</th><th>Vendor</th></tr></thead><tbody>${clientRows.join("")}</tbody></table>`
+        ? `<table><thead><tr><th>MAC</th><th>Vendor</th><th>Evidenza</th></tr></thead><tbody>${clientRows.join("")}</tbody></table>`
         : `<p class="empty">Nessun client rilevato per questo AP in questa scansione (potrebbero comunque esserci dispositivi non rilevati o in stand-by).</p>`}
+      <h2 style="margin-top:20px">Storico correlazioni per questo AP</h2>
+      <div id="modal-ap-history"><span class="muted">Ricerca nello storico...</span></div>
+      <p class="muted" style="margin-top:8px">Elenca i client visti associati a questo BSSID in altre scansioni salvate. "Probe diretta" indica che il dispositivo ha questa rete salvata e la sta cercando attivamente, non una connessione confermata: trattalo come indizio da verificare, non come prova.</p>
       <button class="danger" style="margin-top:16px" id="modal-deauth-btn">Deauth tutti i client</button>
       <button style="margin-top:16px" id="modal-identify-btn">Identifica client (metodo attivo)</button>
       <div id="modal-identify-result"></div>
     `);
     document.getElementById("modal-deauth-btn").onclick = () => onDeauth(ap);
     document.getElementById("modal-identify-btn").onclick = () => identifyClients(ap);
+
+    const historyEl = document.getElementById("modal-ap-history");
+    const history = await lookupApHistory(ap.bssid, ap.scan_id);
+    if (!historyEl) return;
+    if (!history.length) {
+      historyEl.innerHTML = `<p class="empty">Nessuna correlazione storica trovata per questo BSSID nelle scansioni salvate.</p>`;
+      return;
+    }
+    const historyRows = await Promise.all(history.map(async (h) => {
+      const v = await lookupVendor(h.mac);
+      const basis = correlationBasis(h);
+      return `<tr><td>${escapeHtml(h.mac)}</td><td>${escapeHtml(v)}</td><td>${escapeHtml(basis.label)}${basis.detail ? ` <span class="muted">(${escapeHtml(basis.detail)})</span>` : ""}</td><td>#${escapeHtml(String(h.scanId))}</td><td>${fmtEpoch(h.lastSeen)}</td></tr>`;
+    }));
+    historyEl.innerHTML = `<table><thead><tr><th>MAC Client</th><th>Vendor</th><th>Evidenza</th><th>Scan</th><th>Ultima rilevazione</th></tr></thead><tbody>${historyRows.join("")}</tbody></table>`;
   }
 
   async function identifyClients(ap) {
@@ -638,9 +695,37 @@ export async function renderRecon(container) {
     </div>`;
   }
 
-  function clientMacs(clients) {
+  function clientEntries(clients) {
     if (!Array.isArray(clients)) return [];
-    return clients.map((c) => (typeof c === "string" ? c : c?.mac || c?.bssid || "")).filter(Boolean);
+    return clients
+      .map((c) => {
+        if (typeof c === "string") {
+          return c ? { mac: c, data: 0, direct_probes: 0, broadcast_probes: 0, last_seen: 0, ssid: "" } : null;
+        }
+        if (!c || typeof c !== "object") return null;
+        const mac = c.client_mac || c.mac || c.bssid || "";
+        if (!mac) return null;
+        return {
+          mac,
+          data: Number(c.data) || 0,
+          direct_probes: Number(c.direct_probes) || 0,
+          broadcast_probes: Number(c.broadcast_probes) || 0,
+          last_seen: Number(c.last_seen) || 0,
+          ssid: c.ssid || "",
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function clientMacs(clients) {
+    return clientEntries(clients).map((c) => c.mac);
+  }
+
+  function correlationBasis(entry) {
+    if (entry.data > 0) return { label: "Dati reali", detail: `${entry.data} byte di traffico osservato`, strong: true };
+    if (entry.direct_probes > 0) return { label: "Probe diretta", detail: `${entry.direct_probes} probe request verso questo SSID`, strong: false };
+    if (entry.broadcast_probes > 0) return { label: "Probe broadcast", detail: `${entry.broadcast_probes} probe broadcast`, strong: false };
+    return { label: "Rilevato", detail: "", strong: false };
   }
 
   function escapeHtml(str) {
